@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use ureq::{Error, Middleware, MiddlewareNext, Request, Response};
+use ureq::{Error, Middleware, MiddlewareNext, Payload, Request, Response};
 
 // Some state that could be shared with the main application.
 #[derive(Debug, Default)]
@@ -37,7 +37,12 @@ pub fn main() -> Result<(), Error> {
 }
 
 impl Middleware for CounterMiddleware {
-    fn handle(&self, request: Request, next: MiddlewareNext) -> Result<Response, Error> {
+    fn handle(
+        &self,
+        request: Request,
+        payload: Payload,
+        next: MiddlewareNext,
+    ) -> Result<Response, Error> {
         // Get state before request to increase request counter.
         // Extra brackets to release the lock while continuing the chain.
         {
@@ -47,7 +52,7 @@ impl Middleware for CounterMiddleware {
         } // release lock
 
         // Continue the middleware chain
-        let response = next.handle(request)?;
+        let response = next.handle(request, payload)?;
 
         // Get state after response to increase byte count.
         // Extra brackets not necessary, but there for symmetry with first lock.

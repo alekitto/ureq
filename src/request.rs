@@ -136,7 +136,7 @@ impl Request {
             }
         };
 
-        let request_fn = |req: Request| {
+        let request_fn = |req: Request, payload: Payload| {
             let reader = payload.into_read();
             let unit = Unit::new(
                 &req.agent,
@@ -160,10 +160,10 @@ impl Request {
             let next = MiddlewareNext { chain, request_fn };
 
             // // Run middleware chain
-            next.handle(self)?
+            next.handle(self, payload)?
         } else {
             // Run the request_fn without any further indirection.
-            request_fn(self)?
+            request_fn(self, payload)?
         };
 
         if response.status() >= 400 {

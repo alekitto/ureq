@@ -8,9 +8,7 @@ use crate::response::DEFAULT_CHARACTER_SET;
 use encoding_rs::Encoding;
 
 /// The different kinds of bodies to send.
-///
-/// *Internal API*
-pub(crate) enum Payload<'a> {
+pub enum Payload<'a> {
     Empty,
     Text(&'a str, String),
     Reader(Box<dyn Read + 'a>),
@@ -36,19 +34,15 @@ impl Default for Payload<'_> {
 }
 
 /// The size of the body.
-///
-/// *Internal API*
 #[derive(Debug)]
-pub(crate) enum BodySize {
+pub enum BodySize {
     Empty,
     Unknown,
     Known(u64),
 }
 
 /// Payloads are turned into this type where we can hold both a size and the reader.
-///
-/// *Internal API*
-pub(crate) struct SizedReader<'a> {
+pub struct SizedReader<'a> {
     pub size: BodySize,
     pub reader: Box<dyn Read + 'a>,
 }

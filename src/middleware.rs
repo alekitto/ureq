@@ -1,3 +1,4 @@
+use crate::body::Payload;
 use crate::{Error, Request, Response};
 
 /// Chained processing of request (and response).
@@ -11,12 +12,12 @@ use crate::{Error, Request, Response};
 /// That means the easiest way to implement middleware is by providing a `fn`, like so
 ///
 /// ```no_run
-/// # use ureq::{Request, Response, MiddlewareNext, Error};
-/// fn my_middleware(req: Request, next: MiddlewareNext) -> Result<Response, Error> {
+/// # use ureq::{Request, Response, MiddlewareNext, Error, Payload};
+/// fn my_middleware(req: Request, payload: Payload, next: MiddlewareNext) -> Result<Response, Error> {
 ///     // do middleware things
 ///
 ///     // continue the middleware chain
-///     next.handle(req)
+///     next.handle(req, payload)
 /// }
 /// ```
 ///
@@ -59,7 +60,7 @@ use crate::{Error, Request, Response};
 /// a mutex lock like shown below.
 ///
 /// ```no_run
-/// # use ureq::{Request, Response, Middleware, MiddlewareNext, Error};
+/// # use ureq::{Request, Response, Middleware, MiddlewareNext, Error, Payload};
 /// # use std::sync::{Arc, Mutex};
 /// struct MyState {
 ///     // whatever is needed
@@ -68,7 +69,7 @@ use crate::{Error, Request, Response};
 /// struct MyMiddleware(Arc<Mutex<MyState>>);
 ///
 /// impl Middleware for MyMiddleware {
-///     fn handle(&self, request: Request, next: MiddlewareNext) -> Result<Response, Error> {
+///     fn handle(&self, request: Request, payload: Payload, next: MiddlewareNext) -> Result<Response, Error> {
 ///         // These extra brackets ensures we release the Mutex lock before continuing the
 ///         // chain. There could also be scenarios where we want to maintain the lock through
 ///         // the invocation, which would block other requests from proceeding concurrently
@@ -79,7 +80,7 @@ use crate::{Error, Request, Response};
 ///         }
 ///
 ///         // continue middleware chain
-///         next.handle(request)
+///         next.handle(request, payload)
 ///     }
 /// }
 /// ```
@@ -92,7 +93,7 @@ use crate::{Error, Request, Response};
 /// ```no_run
 /// # fn main() -> Result<(), ureq::Error> {
 /// # ureq::is_test(true);
-/// use ureq::{Request, Response, Middleware, MiddlewareNext, Error};
+/// use ureq::{Request, Response, Middleware, MiddlewareNext, Error, Payload};
 /// use std::sync::atomic::{AtomicU64, Ordering};
 /// use std::sync::Arc;
 ///
@@ -102,12 +103,12 @@ use crate::{Error, Request, Response};
 /// struct MyCounter(Arc<AtomicU64>);
 ///
 /// impl Middleware for MyCounter {
-///     fn handle(&self, req: Request, next: MiddlewareNext) -> Result<Response, Error> {
+///     fn handle(&self, req: Request, payload: Payload, next: MiddlewareNext) -> Result<Response, Error> {
 ///         // increase the counter for each invocation
 ///         self.0.fetch_add(1, Ordering::SeqCst);
 ///
 ///         // continue the middleware chain
-///         next.handle(req)
+///         next.handle(req, payload)
 ///     }
 /// }
 ///
@@ -128,7 +129,12 @@ use crate::{Error, Request, Response};
 /// ```
 pub trait Middleware: Send + Sync + 'static {
     /// Handle of the middleware logic.
-    fn handle(&self, request: Request, next: MiddlewareNext) -> Result<Response, Error>;
+    fn handle(
+        &self,
+        request: Request,
+        payload: Payload,
+        next: MiddlewareNext,
+    ) -> Result<Response, Error>;
 }
 
 /// Continuation of a [`Middleware`] chain.
@@ -142,25 +148,30 @@ pub struct MiddlewareNext<'a> {
     // type signature that is totally irrelevant for someone implementing a middleware.
     //
     // So in the name of having a sane external API, we accept this Box.
-    pub(crate) request_fn: Box<dyn FnOnce(Request) -> Result<Response, Error> + 'a>,
+    pub(crate) request_fn: Box<dyn FnOnce(Request, Payload) -> Result<Response, Error> + 'a>,
 }
 
 impl<'a> MiddlewareNext<'a> {
     /// Continue the middleware chain by providing (a possibly amended) [`Request`].
-    pub fn handle(self, request: Request) -> Result<Response, Error> {
+    pub fn handle(self, request: Request, payload: Payload) -> Result<Response, Error> {
         if let Some(step) = self.chain.next() {
-            step.handle(request, self)
+            step.handle(request, payload, self)
         } else {
-            (self.request_fn)(request)
+            (self.request_fn)(request, payload)
         }
     }
 }
 
 impl<F> Middleware for F
 where
-    F: Fn(Request, MiddlewareNext) -> Result<Response, Error> + Send + Sync + 'static,
+    F: Fn(Request, Payload, MiddlewareNext) -> Result<Response, Error> + Send + Sync + 'static,
 {
-    fn handle(&self, request: Request, next: MiddlewareNext) -> Result<Response, Error> {
-        (self)(request, next)
+    fn handle(
+        &self,
+        request: Request,
+        payload: Payload,
+        next: MiddlewareNext,
+    ) -> Result<Response, Error> {
+        (self)(request, payload, next)
     }
 }
